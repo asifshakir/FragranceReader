@@ -8,6 +8,8 @@ using Excel = Microsoft.Office.Interop.Excel;
 using System.Windows.Forms;
 using System.Diagnostics;
 using System.Text.RegularExpressions;
+using System.IO;
+using System.Reflection;
 
 namespace BookReader
 {
@@ -21,9 +23,13 @@ namespace BookReader
 
             var wd = new Word.Application();
             wd.Visible = true;
-            try
+            //try
             {
-                wd.Documents.Open(@"https://d.docs.live.net/e968dcc4f80a2a1e/Islamic Books/Fragrance of Mastership/Fragrance of Mastership(volums 1-5).docx", ReadOnly: true);
+                var location = Assembly.GetExecutingAssembly().Location;
+                var folder = Path.GetDirectoryName(location);
+                string filename = "Fragrance_English_vol_1_5.docx";
+                var filepath = Path.Combine(folder, "Books", filename);
+                wd.Documents.Open(filepath, ReadOnly: true);
                 var currentLine = wd.ActiveDocument
                                     .GoTo(
                                         Word.WdGoToItem.wdGoToPage,
@@ -56,7 +62,7 @@ namespace BookReader
                         Style = paraStyle
                     });
                     testCtr++;
-                    if (testCtr > 10) break;
+                    //if (testCtr > 50) break;
                 }
                 wd.ActiveDocument.Close(false);
                 wd.Quit();
@@ -122,53 +128,138 @@ namespace BookReader
                 }
                 if(tradition != null) traditions.Add(tradition);
 
-                var xl = new Excel.Application();
-                xl.Visible = true;
-                xl.Workbooks.Add();
-                var rowCtr = 2;
-                foreach(var tr in traditions)
+                var DB = new DB.BookDbContext();
+
+                DB.TraditionTranslations.RemoveRange(DB.TraditionTranslations);
+                DB.TraditionReferences.RemoveRange(DB.TraditionReferences);
+                DB.Traditions.RemoveRange(DB.Traditions);
+
+                var tNo = 1;
+                foreach (var tr in traditions)
                 {
-                    var colCtr = 0;
-                    xl.ActiveSheet.Range[$"A{rowCtr}"].Value = tr.Title;
-                    var text = string.Empty;
-                    foreach(var a in tr.Arabic)
+                    if (tr.English.Count > 0)
                     {
-                        text += text == string.Empty ? string.Empty : "\n";
-                        text += a;
+                        var t = new DB.Tradition
+                        {
+                            BookId = 1,
+                            TraditionNo = tNo,
+                            Text = String.Join("\n", tr.English),
+                            Notes = String.Join("\n", tr.Notes)
+                        };
+                        DB.Traditions.Add(t);
+                        DB.SaveChanges();
+                        tNo++;
+
+                        if (tr.Arabic.Count > 0)
+                        {
+                            var t_tr = new DB.TraditionTranslation
+                            {
+                                TraditionId = t.Id,
+                                LanguageId = 1,
+                                Text = String.Join("\n", tr.Arabic)
+                            };
+                            DB.TraditionTranslations.Add(t_tr);
+                            DB.SaveChanges();
+                        }
+
+                        if (tr.References.Count > 0) 
+                        {
+                            foreach (var r in tr.References)
+                            {
+                                string volume = null;
+                                string page = null;
+                                string hadith = null;
+                                string bookname = r;
+
+                                if (r.Contains(','))
+                                {
+                                    var bookParts = r.Split(',');
+                                    bookname = bookParts[0];
+                                    bookname = bookname.Replace("\t", "");
+                                    string pattern = "^[0-9]+\\.";
+                                    bookname = Regex.Replace(bookname, pattern, "").Trim();
+
+                                    var partCtr = 1;
+                                    if (bookParts.Length > partCtr)
+                                    {
+                                        if (bookParts[partCtr].Trim().StartsWith("vol"))
+                                        {
+                                            volume = bookParts[partCtr].Replace("vol. ", "");
+                                        }
+                                        if (bookParts[partCtr].Trim().StartsWith("p"))
+                                        {
+                                            page = bookParts[partCtr].Replace("p. ", "");
+                                        }
+                                        if (bookParts[partCtr].Trim().StartsWith("H"))
+                                        {
+                                            hadith = bookParts[partCtr].Replace("H. ", "");
+                                        }
+                                        if (bookParts[partCtr].Trim().StartsWith("No"))
+                                        {
+                                            hadith = bookParts[partCtr].Replace("No. ", "");
+                                        }
+                                    }
+                                    partCtr++;
+                                    if (bookParts.Length > partCtr)
+                                    {
+                                        if (bookParts[partCtr].Trim().StartsWith("vol"))
+                                        {
+                                            volume = bookParts[partCtr].Replace("vol. ", "");
+                                        }
+                                        if (bookParts[partCtr].Trim().StartsWith("p"))
+                                        {
+                                            page = bookParts[partCtr].Replace("p. ", "");
+                                        }
+                                        if (bookParts[partCtr].Trim().StartsWith("H"))
+                                        {
+                                            hadith = bookParts[partCtr].Replace("H. ", "");
+                                        }
+                                        if (bookParts[partCtr].Trim().StartsWith("No"))
+                                        {
+                                            hadith = bookParts[partCtr].Replace("No. ", "");
+                                        }
+                                    }
+                                    partCtr++;
+                                    if (bookParts.Length > partCtr)
+                                    {
+                                        if (bookParts[partCtr].Trim().StartsWith("vol"))
+                                        {
+                                            volume = bookParts[partCtr].Replace("vol. ", "");
+                                        }
+                                        if (bookParts[partCtr].Trim().StartsWith("p"))
+                                        {
+                                            page = bookParts[partCtr].Replace("p. ", "");
+                                        }
+                                        if (bookParts[partCtr].Trim().StartsWith("H"))
+                                        {
+                                            hadith = bookParts[partCtr].Replace("H. ", "");
+                                        }
+                                        if (bookParts[partCtr].Trim().StartsWith("No"))
+                                        {
+                                            hadith = bookParts[partCtr].Replace("No. ", "");
+                                        }
+                                    }
+                                }
+
+                                var r_tr = new DB.TraditionReference
+                                {
+                                    TraditionId = t.Id,
+                                    Reference = r,
+                                    Book = bookname,
+                                    Volume = volume,
+                                    Page = page,
+                                    Hadith = hadith
+                                };
+                                DB.TraditionReferences.Add(r_tr);
+                            }
+                            DB.SaveChanges();
+                        }
                     }
-                    colCtr++;
-                    xl.ActiveSheet.Range[$"A{rowCtr}"].Offset[0, colCtr].Value = text;
-                    text = string.Empty;
-                    foreach (var a in tr.English)
-                    {
-                        text += text == string.Empty ? string.Empty : "\n";
-                        text += a;
-                    }
-                    colCtr++;
-                    xl.ActiveSheet.Range[$"A{rowCtr}"].Offset[0, colCtr].Value = text;
-                    text = string.Empty;
-                    foreach (var a in tr.Notes)
-                    {
-                        text += text == string.Empty ? string.Empty : "\n";
-                        text += a;
-                    }
-                    colCtr++;
-                    xl.ActiveSheet.Range[$"A{rowCtr}"].Offset[0, colCtr].Value = text;
-                    text = string.Empty;
-                    foreach (var a in tr.References)
-                    {
-                        text += text == string.Empty ? string.Empty : "\n";
-                        text += a;
-                    }
-                    colCtr++;
-                    xl.ActiveSheet.Range[$"A{rowCtr}"].Offset[0, colCtr].Value = text;
-                    text = string.Empty;
-                    rowCtr++;
                 }
             }
-            catch (Exception ex)
+            //catch (Exception ex)
             {
-                Console.WriteLine($"Failed to open file, {ex.Message}");
+                //Console.WriteLine($"{ex.Message}, {ex.StackTrace}");
             }
             Console.ReadKey();
         }
@@ -178,7 +269,12 @@ namespace BookReader
             string html = null;
             if (Clipboard.ContainsText(TextDataFormat.Html))
             {
-                var s = Clipboard.GetData(DataFormats.Html).ToString();
+                var sd = Clipboard.GetData(DataFormats.Html);
+                if (sd == null)
+                {
+                    return null;
+                }
+                var s = sd.ToString();
                 var st = s.IndexOf("<!--StartFragment-->") + 21;
                 var en = s.IndexOf("<!--EndFragment-->");
                 html = s.Substring(st, en - st).Trim();
